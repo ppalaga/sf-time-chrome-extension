@@ -1,0 +1,18 @@
+{
+  "name" : "sf-time-chrome-extension",
+  "version" : "0.0.1",
+  "description" : "Helps to automate boring SF tasks",
+  "content_scripts": [
+    {
+      "matches": ["https://*.sapsf.com/*"],
+      "js": ["sf-time-chrome-extension.js"],
+      "run_at": "document_end"
+    }
+  ],
+  "permissions": [ "declarativeContent", "activeTab" ],
+  "icons" : {
+    "48" : "video-48.png",
+    "128" : "video-128.png"
+  },
+  "manifest_version": 2
+}
