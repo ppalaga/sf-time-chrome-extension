@@ -5,9 +5,14 @@
   "description": "Helps to automate boring SF tasks",
   "content_scripts": [
     {
-      "matches": ["https://*.sapsf.com/*"],
-      "js": ["sf-time-chrome-extension.js"],
-      "run_at": "document_end"
+      "matches": [
+        "https://*.sapsf.com/*"
+      ],
+      "js": [
+        "sf-time-chrome-extension.js"
+      ],
+      "run_at": "document_end",
+      "world": "MAIN"
     }
   ],
   "icons": {

@@ -1,6 +1,23 @@
 = sf-time-chrome-extension
 
-A Google Chrome extension stub for automating SAP SuccessFactors time entry tasks.
+A Google Chrome extension for applying planned time to selected SAP SuccessFactors days.
+
+== Apply planned time to selected days
+
+Select days using the checkboxes in the left pane, then click the green
+*Apply Planned to all* button beside *Apply Planned Time*.
+The extension opens each selected day and invokes the existing planned-time
+action, including its save behavior, before moving to the next day.
+The selection is captured at the start because SuccessFactors clears it after saving.
+
+If a day cannot be applied or a save cannot be confirmed, processing stops and
+a message reports how many days completed. Check the reported day before retrying;
+previously completed days have already been saved. Finish or discard existing
+edits before starting, and let processing finish before navigating elsewhere.
+
+The content script runs in the page's `MAIN` world to access SAP UI5 controls.
+It depends on the SuccessFactors control IDs and save state represented in the
+saved page; changes to the application may require updating the extension.
 
 == How to run
 
@@ -21,3 +38,12 @@ the updated content script.
 
 * https://developer.chrome.com/docs/extensions/develop/migrate/manifest[Manifest V3 migration]
 * https://developer.chrome.com/docs/extensions/develop/concepts/content-scripts[Content scripts]
+
+== Tests
+
+Run `node --test tests/apply-planned.test.cjs` with Node.js.
+These tests simulate UI5 navigation and saving; they do not contact SuccessFactors.
+To verify the integration, load the extension, select two eligible days in a test
+timesheet, and confirm that both receive their own planned entries and an unchecked
+day remains unchanged. Also verify that a day with an unavailable native action
+stops the batch with a progress message.
