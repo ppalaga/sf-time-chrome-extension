@@ -1,6 +1,6 @@
 = sf-time-chrome-extension
 
-A Google Chrome extension for applying planned time to selected SAP SuccessFactors days.
+A Google Chrome extension to make entering working hours into SAP SuccessFactors a bit less tedious.
 
 == Apply planned time to selected days
 
@@ -33,9 +33,27 @@ saved page; changes to the application may require updating the extension.
 
 == How to run
 
-No build step or dependencies are required. Use a current version of Google Chrome.
+First, get the sources of wd-enter-time-chrome-extension
 
-. Open `chrome://extensions/`.
+[source,shell]
+----
+cd ~/projects
+git clone --origin upstream https://github.com/ppalaga/wd-enter-time-chrome-extension.git
+----
+
+Then runt it:
+
+(A) On the command line
+
+[source,shell]
+----
+cd ~/projects/wd-enter-time-chrome-extension
+google-chrome --load-extension=wd-enter-time-chrome-extension
+----
+
+(B) Chrome UI
+
+Open `chrome://extensions/`.
 . Enable *Developer mode*.
 . Click *Load unpacked* and select this repository's directory (containing `manifest.json`).
 . Open or refresh a matching SuccessFactors page to load the content script.
@@ -51,11 +69,3 @@ the updated content script.
 * https://developer.chrome.com/docs/extensions/develop/migrate/manifest[Manifest V3 migration]
 * https://developer.chrome.com/docs/extensions/develop/concepts/content-scripts[Content scripts]
 
-== Tests
-
-Run `node --test tests/*.test.cjs` with Node.js.
-These tests simulate UI5 navigation and saving; they do not contact SuccessFactors.
-To verify the integration, load the extension, select two eligible days in a test
-timesheet, and confirm that both receive their own planned entries and an unchecked
-day remains unchanged. Also verify that a day with an unavailable native action
-stops the batch with a progress message.
