@@ -9,6 +9,7 @@
         "https://*.sapsf.com/*"
       ],
       "js": [
+        "planned-time.js",
         "sf-time-chrome-extension.js"
       ],
       "run_at": "document_end",

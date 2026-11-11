@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 
-function setup({ selected = ['Monday', 'Wednesday'], unavailable, failSave, pending = false, nativeHidden = false } = {}) {
+function setup({ selected = ['Monday', 'Wednesday'], unavailable, failSave, pending = false, nativeHidden = false, absenceDays = {}, maintainable = true } = {}) {
     let active = 'Monday';
     let busy = false;
     let selectedDates = [...selected];
@@ -12,8 +12,19 @@ function setup({ selected = ['Monday', 'Wednesday'], unavailable, failSave, pend
     const alerts = [];
     const applied = [];
     const visited = [];
+    const created = [];
+    const calculated = [];
     const dates = ['Monday', 'Tuesday', 'Wednesday'];
     const records = Object.fromEntries(dates.map(shiftDate => [shiftDate, { shiftDate, summary: { attendances: 0 } }]));
+    for (const [key, absences] of Object.entries(absenceDays)) {
+        Object.assign(records[key], {
+            usesClockTimeVariant: true, isWorkingDay: true, attendances_create_mc: true,
+            plannedAttendanceSegments: [{ category: 'PLANNED_WORKING_TIME', startTime: '08:00', endTime: '16:00' }],
+            absences, summary: { attendances: 0, absences: absences.length }
+        });
+    }
+    // Real ISO dates are required by interval arithmetic; navigation labels are kept
+    // for the existing tests, so use an ISO shift date just during calculation below.
     const rows = dates.map(date => ({ getBindingContext: () => ({ getProperty: () => date }) }));
     const original = { id: 'app---timeRecordingView--applyPlannedTimeBtn' };
     const title = {
@@ -37,7 +48,22 @@ function setup({ selected = ['Monday', 'Wednesday'], unavailable, failSave, pend
         table,
         'app---timeRecordingView': {
             getBindingContext: () => ({ getObject: () => records[active] }),
-            getModel: () => ({ getProperty: () => pending })
+            getModel: () => ({ getProperty: path => path === '/isMaintainable' ? maintainable : pending }),
+            getController: () => ({
+                byId: () => ({ getBinding: () => ({ requestContexts: async () =>
+                    records[active].absences.map(absence => ({ getObject: () => absence })) }) }),
+                formatter: { toEnabledApplyPlannedTimeButton: (allowed, day, edits) =>
+                    allowed && day.isWorkingDay && !edits && day.summary.absences === 0 },
+                getWorkingTimeList: () => ({ getBinding: () => ({}) }),
+                createRecord: (_, record) => { created.push(record); return record; },
+                handleFieldControlCalculationApplyPlannedTime: record => calculated.push(record),
+                publishEvent: (channel, event, data) => {
+                    assert.equal(channel, 'timesheetday');
+                    assert.equal(event, 'saveTimeSheetChanges');
+                    assert.equal(data.event.getSource(), controls[original.id]);
+                    controls[original.id].firePress();
+                }
+            })
         },
         'app---timeSheetSummaryView': { getController: () => ({ oFlexibleColumnLayout: { getBusy: () => busy } }) },
         [original.id]: {
@@ -49,7 +75,7 @@ function setup({ selected = ['Monday', 'Wednesday'], unavailable, failSave, pend
                 selectedDates = [];
                 busy = true;
                 setTimeout(() => {
-                    if (active !== failSave) records[active].summary.attendances++;
+                    if (active !== failSave) records[active].summary.attendances += created.length || 1;
                     busy = false;
                 }, 5);
             }
@@ -69,15 +95,17 @@ function setup({ selected = ['Monday', 'Wednesday'], unavailable, failSave, pend
     vm.runInNewContext(fs.readFileSync('sf-time-chrome-extension.js', 'utf8'), {
         document, window: { sap: { ui: { getCore: () => ({ byId: id => controls[id] }) } }, alert: text => alerts.push(text) },
         MutationObserver: class { constructor(fn) { mutation = fn; } observe() {} },
-        setTimeout, Date
+        setTimeout, Date, crypto: require('node:crypto').webcrypto,
+        SFTimeIntervals: { complement: (day, absences) =>
+            require('../planned-time.js').complement({ ...day, shiftDate: '2026-11-11' }, absences) }
     });
-    return { elements, alerts, applied, visited, mutation, button: () => elements.get('sf-time-apply-planned-to-all') };
+    return { elements, alerts, applied, visited, created, calculated, mutation, button: () => elements.get('sf-time-apply-planned-to-all') };
 }
 
 test('installs once, reinstalls after toolbar replacement, and uses a green button', () => {
     const app = setup();
     const first = app.button();
-    assert.equal(first.textContent, 'Apply Planned to all');
+    assert.equal(first.textContent, 'Complete selected days');
     assert.match(first.style.cssText, /background:#188038/);
     app.mutation();
     assert.equal(app.button(), first);
@@ -126,7 +154,7 @@ test('failed save does not advance to the next selected day', async () => {
 test('button is installed outside the native toolbar even when the native action is absent', async () => {
     const app = setup({ nativeHidden: true, selected: ['Wednesday'] });
     assert.equal(app.button().parentElement.id, 'app---timeRecordingView--timeRecordingTitle-main');
-    assert.equal(app.button().textContent, 'Apply Planned to all');
+    assert.equal(app.button().textContent, 'Complete selected days');
     // Starting on a day with no rendered native button must still allow navigation
     // to a checked working day and lookup of its UI5 action.
     await app.button().click();
@@ -134,5 +162,41 @@ test('button is installed outside the native toolbar even when the native action
     assert.match(app.alerts[0], /1 selected day/);
     app.elements.clear();
     app.mutation();
-    assert.equal(app.button().textContent, 'Apply Planned to all');
+    assert.equal(app.button().textContent, 'Complete selected days');
+});
+
+
+test('absence days create complementary entries and save through the existing flow', async () => {
+    const app = setup({ selected: ['Monday'], nativeHidden: true, unavailable: 'Monday', absenceDays: {
+        Monday: [{ startTime: '10:00', endTime: '12:00', durationInMinutes: '120' }]
+    } });
+    await app.button().click();
+    assert.deepEqual(app.created.map(r => [r.startTime, r.endTime, r.durationInMinutes]), [
+        ['08:00:00', '10:00:00', '120'], ['12:00:00', '16:00:00', '240']
+    ]);
+    assert.equal(app.calculated.length, 2);
+    assert.notEqual(app.created[0].externalCode, app.created[1].externalCode);
+    assert.deepEqual(app.applied, ['Monday']);
+    assert.match(app.alerts[0], /1 selected day/);
+});
+
+test('full-day absence needs no save and processing continues to the next day', async () => {
+    const app = setup({ absenceDays: { Monday: [{ durationInMinutes: '480' }] } });
+    await app.button().click();
+    assert.deepEqual(app.created, []);
+    assert.deepEqual(app.applied, ['Wednesday']);
+    assert.match(app.alerts[0], /2 selected day/);
+});
+
+test('absence handling preserves permission checks and rejects ambiguous partial leave', async () => {
+    for (const options of [
+        { maintainable: false, absenceDays: { Monday: [{ startTime: '10:00', endTime: '12:00', durationInMinutes: '120' }] } },
+        { absenceDays: { Monday: [{ durationInMinutes: '120' }] } }
+    ]) {
+        const app = setup(options);
+        await app.button().click();
+        assert.deepEqual(app.created, []);
+        assert.deepEqual(app.applied, []);
+        assert.match(app.alerts[0], /Stopped at Monday/);
+    }
 });

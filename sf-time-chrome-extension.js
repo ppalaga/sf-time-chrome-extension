@@ -41,6 +41,45 @@
         return view.getBindingContext()?.getObject();
     }
 
+    async function applyAroundAbsences(current) {
+        const shift = day(current.view);
+        const controller = current.view.getController();
+        const binding = controller.byId('recordsAbsence').getBinding('items');
+        const contexts = await binding.requestContexts(0, shift.summary.absences);
+        if (contexts.length !== shift.summary.absences || day(current.view)?.shiftDate !== shift.shiftDate) {
+            throw new Error('Could not load all absences for the selected day.');
+        }
+        const records = SFTimeIntervals.complement(shift, contexts.map(context => context.getObject()));
+        if (!records.length) return 0; // A full day of absence already satisfies the target.
+
+        // The native action disallows any absence. Reuse its other enablement
+        // checks, without changing the application's day data or its button state.
+        const withoutAbsences = { ...shift, summary: { ...shift.summary, absences: 0 } };
+        const permitted = controller.formatter.toEnabledApplyPlannedTimeButton(
+            current.visuals.getProperty('/isMaintainable'), withoutAbsences,
+            current.visuals.getProperty('/pendingChanges'),
+            current.visuals.getProperty('/flexibleApprovalPeriodRecord/flexibleApprovalPeriod'));
+        if (!permitted || shift.isCicoEnabled ||
+            !(shift.attendances_create_mc || shift.attendanceRecordings_create_mc) ||
+            shift.summary.attendances !== 0) {
+            throw new Error('Cannot add complementary time to this day. Check permissions and existing work entries.');
+        }
+        const items = controller.getWorkingTimeList(shift).getBinding('items');
+        for (const record of records) {
+            // Use the same record creation and field-control flow as the native action.
+            const context = controller.createRecord(items, {
+                ...record,
+                mdfSystemRecordId: crypto.randomUUID().replace(/-/g, ''),
+                externalCode: crypto.randomUUID().replace(/-/g, '')
+            });
+            controller.handleFieldControlCalculationApplyPlannedTime(context);
+        }
+        controller.publishEvent('timesheetday', 'saveTimeSheetChanges', {
+            event: { getSource: () => current.button }
+        });
+        return records.length;
+    }
+
     async function applyToSelectedDays() {
         if (running) return;
         running = true;
@@ -75,11 +114,20 @@
                 if (current.visuals.getProperty('/pendingChanges')) {
                     throw new Error('There are unsaved edits. Finish saving or discard them first.');
                 }
-                if (!current.button.getVisible() || !current.button.getEnabled()) {
-                    throw new Error('Apply Planned Time is unavailable for this day.');
-                }
                 const before = day(current.view).summary.attendances;
-                current.button.firePress();
+                let expectedRecords = 1;
+                if (day(current.view).summary.absences > 0) {
+                    expectedRecords = await applyAroundAbsences(current);
+                    if (!expectedRecords) {
+                        completed++;
+                        continue;
+                    }
+                } else {
+                    if (!current.button.getVisible() || !current.button.getEnabled()) {
+                        throw new Error('Apply Planned Time is unavailable for this day.');
+                    }
+                    current.button.firePress();
+                }
                 // triggerAction sets the layout busy synchronously. A confirmation dialog
                 // (for example, on an approved timesheet) must be handled by the user.
                 if (!current.layout.getBusy()) {
@@ -88,7 +136,7 @@
                 await waitFor(() => !current.layout.getBusy(), 'Timed out saving. Check the day before retrying.');
                 const saved = day(current.view);
                 if (saved?.shiftDate !== date || current.visuals.getProperty('/pendingChanges') ||
-                    !(saved.summary.attendances > before)) {
+                    !(saved.summary.attendances >= before + expectedRecords)) {
                     throw new Error('Could not confirm that planned time was saved. Check SuccessFactors before retrying.');
                 }
                 completed++;
@@ -107,7 +155,7 @@
         const button = document.getElementById(buttonId);
         if (!button) return;
         button.disabled = running;
-        const text = running ? 'Applying Planned…' : 'Apply Planned to all';
+        const text = running ? 'Applying Planned…' : 'Complete selected days';
         if (button.textContent !== text) button.textContent = text;
     }
 
@@ -117,7 +165,7 @@
         const button = document.createElement('button');
         button.id = buttonId;
         button.type = 'button';
-        button.title = 'Apply planned to all';
+        button.title = 'Complete selected days';
         // Do not clone SAP control IDs or data-sap-ui attributes: this is a separate DOM button.
         button.style.cssText = 'background:#188038;color:white;border:1px solid #146c2e;' +
             'border-radius:0.5rem;padding:0.5rem 0.75rem;margin-inline-start:0.5rem;' +
