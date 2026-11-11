@@ -1,2 +1,0 @@
-sap.ui.require(["sap/m/MultiInput"],function(t){t.prototype._calculateSpaceForTokenizer=function(){if(this.getDomRef()){var t,e=this.getDomRef().offsetWidth,i=this.$().find(".sapMInputDescriptionWrapper").width()||0,n=this._calculateIconsSpace(),r=this.$().find(".sapMInputBaseInner"),p=["min-width","padding-right","padding-left"],s=p.reduce(function(t,e){return t+(parseInt(r.css(e))||0)},0);t=e-(n+s+i);t=t<0?0:t;return t+"px"}else{return null}}});
-//# sourceMappingURL=sap-m-MultiInput-PATCH.js.map

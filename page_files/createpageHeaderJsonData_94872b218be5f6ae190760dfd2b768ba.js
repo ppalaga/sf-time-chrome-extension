@@ -1,1 +1,0 @@
-function createpageHeaderJsonData(a){window.pageHeaderJsonData={pageInfo:{moduleId:"NONE",pageQualifier:a}}};
