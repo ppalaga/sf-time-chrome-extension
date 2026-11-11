@@ -38,7 +38,7 @@ First, get the sources of wd-enter-time-chrome-extension
 [source,shell]
 ----
 cd ~/projects
-git clone --origin upstream https://github.com/ppalaga/wd-enter-time-chrome-extension.git
+git clone --origin upstream https://github.com/ppalaga/sf-time-chrome-extension.git
 ----
 
 Then runt it:
@@ -48,7 +48,7 @@ Then runt it:
 [source,shell]
 ----
 cd ~/projects/wd-enter-time-chrome-extension
-google-chrome --load-extension=wd-enter-time-chrome-extension
+google-chrome --load-extension=sf-time-chrome-extension
 ----
 
 (B) Chrome UI
