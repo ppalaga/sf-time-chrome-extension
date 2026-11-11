@@ -1,0 +1,2 @@
+sap.ui.define(["sap/ui/core/dnd/DragAndDrop"],function(a){var r=a.onafterdragstart;a.onafterdragstart=function(a){r.apply(this,arguments);jQuery("html").addClass("sapUiDnDNoScrolling")};var n=a.onafterdragend;a.onafterdragend=function(a){n.apply(this,arguments);jQuery("html").removeClass("sapUiDnDNoScrolling")}});
+//# sourceMappingURL=DragAndDrop-PATCH.js.map
