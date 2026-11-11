@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 
-function setup({ selected = ['Monday', 'Wednesday'], unavailable, failSave, pending = false } = {}) {
+function setup({ selected = ['Monday', 'Wednesday'], unavailable, failSave, pending = false, nativeHidden = false } = {}) {
     let active = 'Monday';
     let busy = false;
     let selectedDates = [...selected];
@@ -15,7 +15,11 @@ function setup({ selected = ['Monday', 'Wednesday'], unavailable, failSave, pend
     const dates = ['Monday', 'Tuesday', 'Wednesday'];
     const records = Object.fromEntries(dates.map(shiftDate => [shiftDate, { shiftDate, summary: { attendances: 0 } }]));
     const rows = dates.map(date => ({ getBindingContext: () => ({ getProperty: () => date }) }));
-    const original = { id: 'app---timeRecordingView--applyPlannedTimeBtn', after(button) { elements.set(button.id, button); } };
+    const original = { id: 'app---timeRecordingView--applyPlannedTimeBtn' };
+    const title = {
+        id: 'app---timeRecordingView--timeRecordingTitle-main',
+        append(button) { elements.set(button.id, button); button.parentElement = title; }
+    };
     const table = {
         getSelectedItems: () => rows.filter((_, i) => selectedDates.includes(dates[i])),
         getItems: () => rows,
@@ -37,7 +41,7 @@ function setup({ selected = ['Monday', 'Wednesday'], unavailable, failSave, pend
         },
         'app---timeSheetSummaryView': { getController: () => ({ oFlexibleColumnLayout: { getBusy: () => busy } }) },
         [original.id]: {
-            getVisible: () => true,
+            getVisible: () => !nativeHidden || active !== 'Monday',
             getEnabled: () => active !== unavailable,
             firePress() {
                 assert.equal(busy, false);
@@ -53,7 +57,12 @@ function setup({ selected = ['Monday', 'Wednesday'], unavailable, failSave, pend
     };
     const document = {
         body: {},
-        querySelector: selector => selector.startsWith('button') ? original : { id: 'table' },
+        querySelector: selector => {
+            if (selector === '[id$="--timeRecordingTitle-main"]') return title;
+            if (selector === '[data-help-id="tlm-ts-daysSummaryTable"]') return { id: 'table' };
+            if (selector.startsWith('button')) return nativeHidden ? null : original;
+            return null;
+        },
         getElementById: id => elements.get(id),
         createElement: () => ({ style: {}, addEventListener(_, fn) { this.click = fn; } })
     };
@@ -111,4 +120,19 @@ test('failed save does not advance to the next selected day', async () => {
     assert.deepEqual(app.applied, ['Monday']);
     assert.match(app.alerts[0], /Could not confirm/);
     assert.equal(app.button().disabled, false);
+});
+
+
+test('button is installed outside the native toolbar even when the native action is absent', async () => {
+    const app = setup({ nativeHidden: true, selected: ['Wednesday'] });
+    assert.equal(app.button().parentElement.id, 'app---timeRecordingView--timeRecordingTitle-main');
+    assert.equal(app.button().textContent, 'Apply Planned to all');
+    // Starting on a day with no rendered native button must still allow navigation
+    // to a checked working day and lookup of its UI5 action.
+    await app.button().click();
+    assert.deepEqual(app.applied, ['Wednesday']);
+    assert.match(app.alerts[0], /1 selected day/);
+    app.elements.clear();
+    app.mutation();
+    assert.equal(app.button().textContent, 'Apply Planned to all');
 });

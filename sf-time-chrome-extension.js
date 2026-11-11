@@ -1,7 +1,7 @@
 (() => {
     'use strict';
 
-    const originalSelector = 'button[id$="--applyPlannedTimeBtn"]';
+    const titleSelector = '[id$="--timeRecordingTitle-main"]';
     const tableSelector = '[data-help-id="tlm-ts-daysSummaryTable"]';
     const buttonId = 'sf-time-apply-planned-to-all';
     let running = false;
@@ -19,13 +19,13 @@
 
     function controls() {
         const core = window.sap?.ui?.getCore();
-        const original = document.querySelector(originalSelector);
+        const title = document.querySelector(titleSelector);
         const table = document.querySelector(tableSelector);
-        const viewId = original?.id.replace(/--applyPlannedTimeBtn$/, '');
+        const viewId = title?.id.replace(/--timeRecordingTitle-main$/, '');
         const view = core?.byId(viewId);
         const summary = core?.byId(viewId?.replace(/timeRecordingView$/, 'timeSheetSummaryView'));
         const result = {
-            button: core?.byId(original?.id),
+            button: core?.byId(`${viewId}--applyPlannedTimeBtn`),
             table: core?.byId(table?.id),
             view,
             layout: summary?.getController().oFlexibleColumnLayout,
@@ -112,8 +112,8 @@
     }
 
     function installButton() {
-        const original = document.querySelector(originalSelector);
-        if (!original || document.getElementById(buttonId)) return;
+        const title = document.querySelector(titleSelector);
+        if (!title || document.getElementById(buttonId)) return;
         const button = document.createElement('button');
         button.id = buttonId;
         button.type = 'button';
@@ -123,7 +123,9 @@
             'border-radius:0.5rem;padding:0.5rem 0.75rem;margin-inline-start:0.5rem;' +
             'font:inherit;white-space:nowrap;cursor:pointer;flex-shrink:0';
         button.addEventListener('click', applyToSelectedDays);
-        original.after(button);
+        // The native action and its toolbar can disappear on non-working days.
+        // Keep our action in the persistent title row, outside that toolbar.
+        title.append(button);
         updateButton();
     }
 
