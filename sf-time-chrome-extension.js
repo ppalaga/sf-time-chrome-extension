@@ -5,6 +5,7 @@
     const tableSelector = '[data-help-id="tlm-ts-daysSummaryTable"]';
     const headerSelector = '#bizXShellBarContainer';
     const buttonId = 'sf-time-apply-planned-to-all';
+    const weekdaysId = 'sf-time-select-weekdays';
     const panelId = 'sf-time-panel';
     const panelWidth = '10rem';
     let running = false;
@@ -84,6 +85,19 @@
         return records.length;
     }
 
+    function selectWeekdays(table) {
+        for (const item of table.getItems()) {
+            const date = item.getBindingContext()?.getProperty('shiftDate');
+            if (!date) continue;
+            // 0 is Sunday and 6 is Saturday.
+            const weekday = new Date(`${date}T00:00:00Z`).getUTCDay();
+            const select = weekday >= 1 && weekday <= 5;
+            // Fire selectionChange, as a click on the row's checkbox does, so that
+            // SuccessFactors' own record of the selected days stays in step.
+            if (item.getSelected() !== select) table.setSelectedItem(item, select, true);
+        }
+    }
+
     async function applyToSelectedDays() {
         if (running) return;
         running = true;
@@ -96,6 +110,7 @@
             if (initial.layout.getBusy() || initial.visuals.getProperty('/pendingChanges')) {
                 throw new Error('Finish saving or discard your current edits first.');
             }
+            if (document.getElementById(weekdaysId)?.checked) selectWeekdays(initial.table);
             // The native save action clears selection. Snapshot dates, not DOM IDs or row indexes.
             const dates = [...new Set(initial.table.getSelectedItems().map(item =>
                 item.getBindingContext().getProperty('shiftDate')))];
@@ -164,6 +179,8 @@
         button.style.cursor = running ? 'progress' : 'pointer';
         const text = running ? 'Applying Planned…' : 'Complete selected days';
         if (button.textContent !== text) button.textContent = text;
+        const weekdays = document.getElementById(weekdaysId);
+        if (weekdays) weekdays.disabled = running;
     }
 
     function createPanel() {
@@ -181,6 +198,15 @@
         const heading = document.createElement('div');
         heading.textContent = 'SF Time';
         heading.style.cssText = 'font-weight:bold;color:var(--sapContent_LabelColor,#556b82)';
+        const label = document.createElement('label');
+        label.title = 'Before processing, select Monday to Friday and unselect Saturday and Sunday';
+        label.style.cssText = 'display:flex;align-items:flex-start;gap:0.375rem;cursor:pointer';
+        const weekdays = document.createElement('input');
+        weekdays.id = weekdaysId;
+        weekdays.type = 'checkbox';
+        weekdays.checked = true;
+        weekdays.style.cssText = 'margin:0.125rem 0 0;flex-shrink:0;accent-color:#188038;cursor:inherit';
+        label.append(weekdays, 'Select Monday-Friday');
         const button = document.createElement('button');
         button.id = buttonId;
         button.type = 'button';
@@ -188,7 +214,7 @@
         button.style.cssText = 'background:#188038;color:white;border:1px solid #146c2e;' +
             'border-radius:0.5rem;padding:0.5rem 0.75rem;font:inherit';
         button.addEventListener('click', applyToSelectedDays);
-        panel.append(heading, button);
+        panel.append(heading, label, button);
         document.body.append(panel);
         updateButton();
         // The global header is fixed to the full window width (100vw) and does not
