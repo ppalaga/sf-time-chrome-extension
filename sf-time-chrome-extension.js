@@ -6,6 +6,7 @@
     const headerSelector = '#bizXShellBarContainer';
     const buttonId = 'sf-time-apply-planned-to-all';
     const weekdaysId = 'sf-time-select-weekdays';
+    const submitId = 'sf-time-submit';
     const panelId = 'sf-time-panel';
     const panelWidth = '10rem';
     let running = false;
@@ -33,6 +34,7 @@
             button: core?.byId(`${viewId}--applyPlannedTimeBtn`),
             table: core?.byId(table?.id),
             view,
+            summary,
             layout: summary?.getController().oFlexibleColumnLayout,
             visuals: view?.getModel('visuals')
         };
@@ -98,6 +100,50 @@
         }
     }
 
+    async function submitTimeSheet() {
+        const { summary, layout, visuals } = controls();
+        const submit = summary.byId('submitTimeSheetBtn');
+        const dialog = summary.byId('submitDialog');
+        const confirm = summary.byId('btnConfirmSubmitDialog');
+        if (!submit || !dialog || !confirm) throw new Error('SuccessFactors submit controls are not ready.');
+        if (layout.getBusy() || visuals.getProperty('/pendingChanges') ||
+            !submit.getVisible() || !submit.getEnabled()) {
+            throw new Error('Submit is unavailable for this time sheet.');
+        }
+        const status = () => summary.getBindingContext()?.getProperty('approvalStatusKey');
+        const before = status();
+
+        // The native Submit action loads the dialog's texts and then opens the dialog.
+        let open = false;
+        const onOpen = () => { open = true; };
+        dialog.attachAfterOpen(onOpen);
+        try {
+            submit.firePress();
+            await waitFor(() => {
+                if (window.sap.ui.getCore().byId('tsSubmitErrorMessageBox')) {
+                    throw new Error('SuccessFactors could not open the submit dialog.');
+                }
+                return open;
+            }, 'Timed out opening the submit dialog.');
+        } finally {
+            dialog.detachAfterOpen(onOpen);
+        }
+
+        // Accept the dialog as it is offered, with an empty comment.
+        if (!confirm.getVisible() || !confirm.getEnabled()) {
+            throw new Error('The submit dialog cannot be confirmed. Check SuccessFactors.');
+        }
+        confirm.firePress();
+        // As for saving, triggerAction sets the layout busy synchronously.
+        if (!layout.getBusy()) {
+            throw new Error('The submission did not start. Check SuccessFactors for an error.');
+        }
+        await waitFor(() => !layout.getBusy(), 'Timed out submitting. Check the time sheet status before retrying.');
+        if (status() === before) {
+            throw new Error('Could not confirm that the time sheet was submitted. Check SuccessFactors before retrying.');
+        }
+    }
+
     async function applyToSelectedDays() {
         if (running) return;
         running = true;
@@ -110,6 +156,7 @@
             if (initial.layout.getBusy() || initial.visuals.getProperty('/pendingChanges')) {
                 throw new Error('Finish saving or discard your current edits first.');
             }
+            const submit = document.getElementById(submitId)?.checked;
             if (document.getElementById(weekdaysId)?.checked) selectWeekdays(initial.table);
             // The native save action clears selection. Snapshot dates, not DOM IDs or row indexes.
             const dates = [...new Set(initial.table.getSelectedItems().map(item =>
@@ -160,7 +207,12 @@
                 }
                 completed++;
             }
-            window.alert(`Applied planned time to ${completed} selected day(s).`);
+            if (submit) {
+                currentDate = ''; // A failure from here on is not about a particular day.
+                await submitTimeSheet();
+            }
+            window.alert(`Applied planned time to ${completed} selected day(s).` +
+                `${submit ? ' Submitted the time sheet.' : ''}`);
         } catch (error) {
             window.alert(`Applied planned time to ${completed} of ${total} selected day(s).` +
                 `${currentDate ? ` Stopped at ${currentDate}.` : ''}\n${error.message}`);
@@ -179,8 +231,23 @@
         button.style.cursor = running ? 'progress' : 'pointer';
         const text = running ? 'Applying Planned…' : 'Complete selected days';
         if (button.textContent !== text) button.textContent = text;
-        const weekdays = document.getElementById(weekdaysId);
-        if (weekdays) weekdays.disabled = running;
+        for (const id of [weekdaysId, submitId]) {
+            const checkbox = document.getElementById(id);
+            if (checkbox) checkbox.disabled = running;
+        }
+    }
+
+    function createCheckbox(id, text, title) {
+        const label = document.createElement('label');
+        label.title = title;
+        label.style.cssText = 'display:flex;align-items:flex-start;gap:0.375rem;cursor:pointer';
+        const checkbox = document.createElement('input');
+        checkbox.id = id;
+        checkbox.type = 'checkbox';
+        checkbox.checked = true;
+        checkbox.style.cssText = 'margin:0.125rem 0 0;flex-shrink:0;accent-color:#188038;cursor:inherit';
+        label.append(checkbox, text);
+        return label;
     }
 
     function createPanel() {
@@ -198,15 +265,10 @@
         const heading = document.createElement('div');
         heading.textContent = 'SF Time';
         heading.style.cssText = 'font-weight:bold;color:var(--sapContent_LabelColor,#556b82)';
-        const label = document.createElement('label');
-        label.title = 'Before processing, select Monday to Friday and unselect Saturday and Sunday';
-        label.style.cssText = 'display:flex;align-items:flex-start;gap:0.375rem;cursor:pointer';
-        const weekdays = document.createElement('input');
-        weekdays.id = weekdaysId;
-        weekdays.type = 'checkbox';
-        weekdays.checked = true;
-        weekdays.style.cssText = 'margin:0.125rem 0 0;flex-shrink:0;accent-color:#188038;cursor:inherit';
-        label.append(weekdays, 'Select Monday-Friday');
+        const weekdays = createCheckbox(weekdaysId, 'Select Monday-Friday',
+            'Before processing, select Monday to Friday and unselect Saturday and Sunday');
+        const submit = createCheckbox(submitId, 'Submit',
+            'After the selected days are completed, submit the time sheet without a comment');
         const button = document.createElement('button');
         button.id = buttonId;
         button.type = 'button';
@@ -214,7 +276,7 @@
         button.style.cssText = 'background:#188038;color:white;border:1px solid #146c2e;' +
             'border-radius:0.5rem;padding:0.5rem 0.75rem;font:inherit';
         button.addEventListener('click', applyToSelectedDays);
-        panel.append(heading, label, button);
+        panel.append(heading, weekdays, submit, button);
         document.body.append(panel);
         updateButton();
         // The global header is fixed to the full window width (100vw) and does not

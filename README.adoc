@@ -17,6 +17,12 @@ The extension opens each selected day and invokes the existing planned-time
 action, including its save behavior, before moving to the next day.
 The selection is captured at the start because SuccessFactors clears it after saving.
 
+While the *Submit* checkbox is checked, which is also the default, the extension
+submits the time sheet once all selected days have been completed. It invokes the
+blue *Submit* action and confirms the *Submit Time Sheet* dialog as offered,
+without a comment. The time sheet is not submitted if any day fails. Uncheck
+*Submit* to review the time sheet and submit it yourself.
+
 For days with absences, the extension reads the absence records and creates only
 the complementary working-time spans within the planned schedule. Unpaid breaks
 remain excluded, and credited absence time plus work must total eight hours.
