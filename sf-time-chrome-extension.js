@@ -3,8 +3,12 @@
 
     const titleSelector = '[id$="--timeRecordingTitle-main"]';
     const tableSelector = '[data-help-id="tlm-ts-daysSummaryTable"]';
+    const headerSelector = '#bizXShellBarContainer';
     const buttonId = 'sf-time-apply-planned-to-all';
+    const panelId = 'sf-time-panel';
+    const panelWidth = '10rem';
     let running = false;
+    let panelVisible = false;
 
     const delay = () => new Promise(resolve => setTimeout(resolve, 100));
 
@@ -148,6 +152,7 @@
         } finally {
             running = false;
             updateButton();
+            updatePanel();
         }
     }
 
@@ -155,29 +160,64 @@
         const button = document.getElementById(buttonId);
         if (!button) return;
         button.disabled = running;
+        button.style.opacity = running ? '0.6' : '1';
+        button.style.cursor = running ? 'progress' : 'pointer';
         const text = running ? 'Applying Planned…' : 'Complete selected days';
         if (button.textContent !== text) button.textContent = text;
     }
 
-    function installButton() {
-        const title = document.querySelector(titleSelector);
-        if (!title || document.getElementById(buttonId)) return;
+    function createPanel() {
+        // Plain DOM styled inline, without SAP control IDs, classes or data-sap-ui
+        // attributes, so that SAP UI5 neither adopts nor re-renders it.
+        const panel = document.createElement('aside');
+        panel.id = panelId;
+        panel.setAttribute('aria-label', 'SF Time extension');
+        // SAP UI5 popups start at z-index 10, so they still open above the panel.
+        panel.style.cssText = `position:fixed;top:0;right:0;bottom:0;width:${panelWidth};z-index:1;` +
+            'box-sizing:border-box;display:none;flex-direction:column;gap:0.75rem;padding:1rem 0.75rem;' +
+            'background:var(--sapBackgroundColor,#f5f6f7);color:var(--sapTextColor,#1d2d3e);' +
+            'border-inline-start:1px solid var(--sapList_BorderColor,#e5e5e5);' +
+            'font-family:var(--sapFontFamily,Arial,Helvetica,sans-serif);font-size:0.875rem';
+        const heading = document.createElement('div');
+        heading.textContent = 'SF Time';
+        heading.style.cssText = 'font-weight:bold;color:var(--sapContent_LabelColor,#556b82)';
         const button = document.createElement('button');
         button.id = buttonId;
         button.type = 'button';
-        button.title = 'Complete selected days';
-        // Do not clone SAP control IDs or data-sap-ui attributes: this is a separate DOM button.
+        button.title = 'Apply planned time to the days selected in the time sheet';
         button.style.cssText = 'background:#188038;color:white;border:1px solid #146c2e;' +
-            'border-radius:0.5rem;padding:0.5rem 0.75rem;margin-inline-start:0.5rem;' +
-            'font:inherit;white-space:nowrap;cursor:pointer;flex-shrink:0';
+            'border-radius:0.5rem;padding:0.5rem 0.75rem;font:inherit';
         button.addEventListener('click', applyToSelectedDays);
-        // The native action and its toolbar can disappear on non-working days.
-        // Keep our action in the persistent title row, outside that toolbar.
-        title.append(button);
+        panel.append(heading, button);
+        document.body.append(panel);
         updateButton();
+        // The global header is fixed to the full window width (100vw) and does not
+        // narrow with the page, so the panel starts below it instead of covering it.
+        const header = document.querySelector(headerSelector);
+        if (header) {
+            new ResizeObserver(() => {
+                panel.style.top = `${Math.max(0, header.getBoundingClientRect().bottom)}px`;
+            }).observe(header);
+        }
+        return panel;
     }
 
-    // SAP UI5 can render the toolbar after startup or replace it on navigation.
-    new MutationObserver(installButton).observe(document.body, { childList: true, subtree: true });
-    installButton();
+    function updatePanel() {
+        // Keep the panel while a batch runs, even if SAP UI5 re-renders the time sheet.
+        const show = running || !!document.querySelector(`${titleSelector}, ${tableSelector}`);
+        let panel = document.getElementById(panelId);
+        if (show === panelVisible && (panel || !show)) return;
+        if (show && !panel) panel = createPanel();
+        panelVisible = show;
+        if (panel) panel.style.display = show ? 'flex' : 'none';
+        // Narrow the page rather than cover its right edge. The page origin stays
+        // put, so SAP UI5 keeps positioning its popups correctly.
+        const root = document.documentElement;
+        if (show) root.style.setProperty('width', `calc(100% - ${panelWidth})`, 'important');
+        else root.style.removeProperty('width');
+    }
+
+    // SAP UI5 can render the time sheet after startup or replace it on navigation.
+    new MutationObserver(updatePanel).observe(document.body, { childList: true, subtree: true });
+    updatePanel();
 })();

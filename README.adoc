@@ -4,8 +4,12 @@ A Google Chrome extension to make entering working hours into SAP SuccessFactors
 
 == Apply planned time to selected days
 
+While a time sheet is displayed, the extension docks an *SF Time* panel to the
+right edge of the window, below the SuccessFactors header. The page is narrowed
+to make room for it, so the panel does not cover any time sheet content.
+
 Select days using the checkboxes in the left pane, then click the green
-*Complete selected days* button beside *Apply Planned Time*.
+*Complete selected days* button in the *SF Time* panel.
 The extension opens each selected day and invokes the existing planned-time
 action, including its save behavior, before moving to the next day.
 The selection is captured at the start because SuccessFactors clears it after saving.
